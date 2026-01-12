@@ -1,10 +1,13 @@
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.sql.*;
 import java.util.ArrayList;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.io.OutputStream;
+import com.google.gson.Gson;
 
-// Employee class to store employee details
+// Employee class
 class Employee {
     int id;
     String name, gender, phone, email;
@@ -24,7 +27,7 @@ public class AddMultipleEmployees extends JFrame implements ActionListener {
     JComboBox<String> cbGender;
     JButton addEmployee, saveAll, back;
 
-    ArrayList<Employee> employees = new ArrayList<>(); // to store multiple employees
+    ArrayList<Employee> employees = new ArrayList<>();
 
     AddMultipleEmployees() {
         setLayout(null);
@@ -34,7 +37,6 @@ public class AddMultipleEmployees extends JFrame implements ActionListener {
         heading.setFont(new Font("SAN_SERIF", Font.BOLD, 25));
         add(heading);
 
-        // Name
         JLabel labelname = new JLabel("Name");
         labelname.setBounds(50, 150, 150, 30);
         labelname.setFont(new Font("serif", Font.PLAIN, 20));
@@ -44,19 +46,15 @@ public class AddMultipleEmployees extends JFrame implements ActionListener {
         tfname.setBounds(200, 150, 150, 30);
         add(tfname);
 
-        // Gender
-        JLabel labeleducation = new JLabel("Gender");
-        labeleducation.setBounds(50, 200, 150, 30);
-        labeleducation.setFont(new Font("serif", Font.PLAIN, 20));
-        add(labeleducation);
+        JLabel labelgender = new JLabel("Gender");
+        labelgender.setBounds(50, 200, 150, 30);
+        labelgender.setFont(new Font("serif", Font.PLAIN, 20));
+        add(labelgender);
 
-        String gender[] = {"Male", "Female"};
-        cbGender = new JComboBox<>(gender);
-        cbGender.setBackground(Color.WHITE);
+        cbGender = new JComboBox<>(new String[]{"Male", "Female"});
         cbGender.setBounds(200, 200, 150, 30);
         add(cbGender);
 
-        // Phone
         JLabel labelphone = new JLabel("Phone");
         labelphone.setBounds(50, 250, 150, 30);
         labelphone.setFont(new Font("serif", Font.PLAIN, 20));
@@ -66,7 +64,6 @@ public class AddMultipleEmployees extends JFrame implements ActionListener {
         tfphone.setBounds(200, 250, 150, 30);
         add(tfphone);
 
-        // Email
         JLabel labelemail = new JLabel("Email");
         labelemail.setBounds(50, 300, 150, 30);
         labelemail.setFont(new Font("serif", Font.PLAIN, 20));
@@ -76,27 +73,18 @@ public class AddMultipleEmployees extends JFrame implements ActionListener {
         tfemail.setBounds(200, 300, 150, 30);
         add(tfemail);
 
-        // Add Employee Button (stores in ArrayList)
         addEmployee = new JButton("Add Employee");
         addEmployee.setBounds(100, 400, 150, 40);
-        addEmployee.setBackground(Color.BLACK);
-        addEmployee.setForeground(Color.WHITE);
         addEmployee.addActionListener(this);
         add(addEmployee);
 
-        // Save All to DB
         saveAll = new JButton("Save All");
         saveAll.setBounds(300, 400, 150, 40);
-        saveAll.setBackground(Color.BLACK);
-        saveAll.setForeground(Color.WHITE);
         saveAll.addActionListener(this);
         add(saveAll);
 
-        // Back Button
         back = new JButton("Back");
         back.setBounds(500, 400, 150, 40);
-        back.setBackground(Color.BLACK);
-        back.setForeground(Color.WHITE);
         back.addActionListener(this);
         add(back);
 
@@ -106,8 +94,8 @@ public class AddMultipleEmployees extends JFrame implements ActionListener {
     }
 
     public void actionPerformed(ActionEvent ae) {
+
         if (ae.getSource() == addEmployee) {
-            // Add employee to ArrayList
             String name = tfname.getText();
             String gender = (String) cbGender.getSelectedItem();
             String phone = tfphone.getText();
@@ -118,62 +106,54 @@ public class AddMultipleEmployees extends JFrame implements ActionListener {
                 return;
             }
 
-            // Temporary ID 0, real ID assigned on Save All
             employees.add(new Employee(0, name, gender, phone, email));
+            JOptionPane.showMessageDialog(null, "Employee added. Total: " + employees.size());
 
-            JOptionPane.showMessageDialog(null, "Employee added to list! Total: " + employees.size());
-
-            // Clear fields for next entry
             tfname.setText("");
             tfphone.setText("");
             tfemail.setText("");
             cbGender.setSelectedIndex(0);
+        }
 
-        } else if (ae.getSource() == saveAll) {
-            // Save all employees in ArrayList to DB
+        else if (ae.getSource() == saveAll) {
+
             if (employees.isEmpty()) {
                 JOptionPane.showMessageDialog(null, "No employees to save!");
                 return;
             }
 
             try {
-                Conn db = new Conn();
+                Gson gson = new Gson();
+                String json = gson.toJson(employees);
 
-                // Get the current max ID from the DB
-                Statement stmt = db.getConnection().createStatement();
-                ResultSet rs = stmt.executeQuery("SELECT MAX(ID) FROM emp");
-                int lastId = 0;
-                if (rs.next()) {
-                    lastId = rs.getInt(1); // get the max ID, if table is empty will return 0
+                URL url = new URL("http://localhost:8080/api/employees/bulk");
+                HttpURLConnection con = (HttpURLConnection) url.openConnection();
+
+                con.setRequestMethod("POST");
+                con.setRequestProperty("Content-Type", "application/json");
+                con.setDoOutput(true);
+
+                OutputStream os = con.getOutputStream();
+                os.write(json.getBytes("UTF-8"));
+                os.flush();
+                os.close();
+
+                int responseCode = con.getResponseCode();
+
+                if (responseCode == 200 || responseCode == 201) {
+                    JOptionPane.showMessageDialog(null, "All employees saved successfully!");
+                    employees.clear();
+                } else {
+                    JOptionPane.showMessageDialog(null, "Server error: " + responseCode);
                 }
-                rs.close();
-                stmt.close();
-
-                // Prepare insert statement
-                String sql = "INSERT INTO emp VALUES (?, ?, ?, ?, ?)";
-                PreparedStatement ps = db.getConnection().prepareStatement(sql);
-
-                // Assign unique incremented IDs based on DB max ID
-                for (Employee emp : employees) {
-                    lastId++; // increment DB max ID
-                    emp.id = lastId; // update employee ID
-                    ps.setInt(1, emp.id);
-                    ps.setString(2, emp.name);
-                    ps.setString(3, emp.gender);
-                    ps.setString(4, emp.phone);
-                    ps.setString(5, emp.email);
-                    ps.addBatch();
-                }
-
-                ps.executeBatch(); // execute all inserts at once
-                JOptionPane.showMessageDialog(null, "All employees saved successfully!");
-                employees.clear(); // clear the list
 
             } catch (Exception e) {
                 e.printStackTrace();
+                JOptionPane.showMessageDialog(null, "API connection failed!");
             }
+        }
 
-        } else if (ae.getSource() == back) {
+        else if (ae.getSource() == back) {
             setVisible(false);
             new Home();
         }
